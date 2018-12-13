@@ -152,17 +152,57 @@ lws_genrsa_public_decrypt(struct lws_genrsa_ctx *ctx, const uint8_t *in,
 	int n;
 
 	ctx->ctx->len = in_len;
+	ctx->ctx->padding = mode_map[ctx->mode];
 
 	switch(ctx->mode) {
 	case LGRSAM_PKCS1_1_5:
-		n = mbedtls_rsa_rsaes_pkcs1_v15_decrypt(ctx->ctx, NULL, NULL,
+		n = mbedtls_rsa_rsaes_pkcs1_v15_decrypt(ctx->ctx, _rngf,
+							ctx->context,
 							MBEDTLS_RSA_PUBLIC,
 							&olen, in, out,
 							out_max);
 		break;
 	case LGRSAM_PKCS1_OAEP_PSS:
-		n = mbedtls_rsa_rsaes_oaep_decrypt(ctx->ctx, NULL, NULL,
+		n = mbedtls_rsa_rsaes_oaep_decrypt(ctx->ctx, _rngf,
+						   ctx->context,
 						   MBEDTLS_RSA_PUBLIC,
+						   NULL, 0,
+						   &olen, in, out, out_max);
+		break;
+	default:
+		return -1;
+	}
+	if (n) {
+		lwsl_notice("%s: -0x%x\n", __func__, -n);
+
+		return -1;
+	}
+
+	return olen;
+}
+
+LWS_VISIBLE int
+lws_genrsa_private_decrypt(struct lws_genrsa_ctx *ctx, const uint8_t *in,
+			   size_t in_len, uint8_t *out, size_t out_max)
+{
+	size_t olen = 0;
+	int n;
+
+	ctx->ctx->len = in_len;
+	ctx->ctx->padding = mode_map[ctx->mode];
+
+	switch(ctx->mode) {
+	case LGRSAM_PKCS1_1_5:
+		n = mbedtls_rsa_rsaes_pkcs1_v15_decrypt(ctx->ctx, _rngf,
+							ctx->context,
+							MBEDTLS_RSA_PRIVATE,
+							&olen, in, out,
+							out_max);
+		break;
+	case LGRSAM_PKCS1_OAEP_PSS:
+		n = mbedtls_rsa_rsaes_oaep_decrypt(ctx->ctx, _rngf,
+						   ctx->context,
+						   MBEDTLS_RSA_PRIVATE,
 						   NULL, 0,
 						   &olen, in, out, out_max);
 		break;
@@ -181,6 +221,41 @@ lws_genrsa_public_decrypt(struct lws_genrsa_ctx *ctx, const uint8_t *in,
 LWS_VISIBLE int
 lws_genrsa_public_encrypt(struct lws_genrsa_ctx *ctx, const uint8_t *in,
 			  size_t in_len, uint8_t *out)
+{
+	int n;
+
+	ctx->ctx->padding = mode_map[ctx->mode];
+
+	switch(ctx->mode) {
+	case LGRSAM_PKCS1_1_5:
+		n = mbedtls_rsa_rsaes_pkcs1_v15_encrypt(ctx->ctx, _rngf,
+							ctx->context,
+							MBEDTLS_RSA_PUBLIC,
+							in_len, in, out);
+		break;
+	case LGRSAM_PKCS1_OAEP_PSS:
+		n = mbedtls_rsa_rsaes_oaep_encrypt(ctx->ctx, _rngf,
+						   ctx->context,
+						   MBEDTLS_RSA_PUBLIC,
+						   NULL, 0,
+						   in_len, in, out);
+		break;
+	default:
+		return -1;
+	}
+	if (n < 0) {
+		lwsl_notice("%s: -0x%x: in_len: %d\n", __func__, -n,
+				(int)in_len);
+
+		return -1;
+	}
+
+	return mbedtls_mpi_size(&ctx->ctx->N);
+}
+
+LWS_VISIBLE int
+lws_genrsa_private_encrypt(struct lws_genrsa_ctx *ctx, const uint8_t *in,
+			   size_t in_len, uint8_t *out)
 {
 	int n;
 
@@ -210,7 +285,7 @@ lws_genrsa_public_encrypt(struct lws_genrsa_ctx *ctx, const uint8_t *in,
 		return -1;
 	}
 
-	return 0;
+	return mbedtls_mpi_size(&ctx->ctx->N);
 }
 
 LWS_VISIBLE int
